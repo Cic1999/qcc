@@ -1,299 +1,52 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini 互動式問答</title>
-    <!-- 引入 Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 使用 Inter 字體 -->
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f7f7f7;
-        }
-        /* 自定義 loading 動畫 */
-        .dot-pulse {
-            position: relative;
-            left: -9999px;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #3b82f6;
-            color: #3b82f6;
-            box-shadow: 9999px 0 0 -5px;
-            animation: dot-pulse 1.5s infinite linear;
-            animation-delay: 0.25s;
-        }
+async function askGemini() {
+    const userQuery = questionInput.value.trim();
+    if (!userQuery) return;
 
-        .dot-pulse::before, .dot-pulse::after {
-            content: '';
-            display: inline-block;
-            position: absolute;
-            top: 0;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: #3b82f6;
-            color: #3b82f6;
-        }
+    // 顯示使用者訊息
+    createMessageElement(userQuery, 'user');
 
-        .dot-pulse::before {
-            box-shadow: 9984px 0 0 -5px;
-            animation: dot-pulse-before 1.5s infinite linear;
-            animation-delay: 0s;
-        }
+    questionInput.value = '';
+    askButton.disabled = true;
+    buttonText.textContent = '提問中...';
+    loadingIndicator.classList.remove('hidden');
 
-        .dot-pulse::after {
-            box-shadow: 10014px 0 0 -5px;
-            animation: dot-pulse-after 1.5s infinite linear;
-            animation-delay: 0.5s;
-        }
+    const loadingBox = createMessageElement('', 'loading');
 
-        @keyframes dot-pulse {
-            0% { box-shadow: 9999px 0 0 -5px; }
-            30% { box-shadow: 9999px 0 0 2px; }
-            60%, 100% { box-shadow: 9999px 0 0 -5px; }
-        }
-
-        @keyframes dot-pulse-before {
-            0% { box-shadow: 9984px 0 0 -5px; }
-            30% { box-shadow: 9984px 0 0 2px; }
-            60%, 100% { box-shadow: 9984px 0 0 -5px; }
-        }
-
-        @keyframes dot-pulse-after {
-            0% { box-shadow: 10014px 0 0 -5px; }
-            30% { box-shadow: 10014px 0 0 2px; }
-            60%, 100% { box-shadow: 10014px 0 0 -5px; }
-        }
-    </style>
-</head>
-<body class="min-h-screen flex items-center justify-center p-4">
-
-    <div class="w-full max-w-2xl bg-white shadow-xl rounded-xl p-6 flex flex-col h-[80vh]">
-        
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">
-            <span class="text-blue-600">Gemini</span> 互動問答機器人
-        </h1>
-
-        <!-- 聊天記錄顯示區 -->
-        <div id="chatHistory" class="flex-grow overflow-y-auto space-y-4 pr-2 mb-6">
-            <div class="flex justify-start">
-                <div class="bg-blue-100 text-blue-800 p-3 rounded-xl rounded-tl-none shadow max-w-[85%]">
-                    <p class="font-semibold mb-1">AI 助理</p>
-                    <p>您好！請輸入您的問題，我會盡力使用最新資訊為您解答。</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- 輸入區 -->
-        <div class="flex flex-col space-y-3">
-            <textarea
-                id="questionInput"
-                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 resize-none h-20"
-                placeholder="在這裡輸入您的問題..."
-                onkeypress="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); askGemini(); }"
-            ></textarea>
-            <button
-                id="askButton"
-                onclick="askGemini()"
-                class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 transition duration-200 shadow-md flex items-center justify-center disabled:bg-blue-400"
-            >
-                <span id="buttonText">提問</span>
-                <div id="loadingIndicator" class="hidden">
-                    <div class="dot-pulse"></div>
-                </div>
-            </button>
-        </div>
-    </div>
-
-    <script>
-        // --- Firebase/Canvas Configuration (Required for API Calls) ---
-        const apiKey = ""; // API Key 留空，Canvas 環境會自動提供
-        const modelName = 'gemini-2.5-flash-preview-09-2025';
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
-        const chatHistory = document.getElementById('chatHistory');
-        const questionInput = document.getElementById('questionInput');
-        const askButton = document.getElementById('askButton');
-        const buttonText = document.getElementById('buttonText');
-        const loadingIndicator = document.getElementById('loadingIndicator');
-
-        /**
-         * 創建一個 DOM 元素來顯示訊息
-         * @param {string} text - 訊息內容
-         * @param {'user'|'gemini'|'loading'|'error'} role - 訊息角色
-         * @param {Array<{uri: string, title: string}>} [sources=[]] - 引用來源
-         * @returns {HTMLElement}
-         */
-        function createMessageElement(text, role, sources = []) {
-            const messageContainer = document.createElement('div');
-            messageContainer.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
-
-            const messageBox = document.createElement('div');
-            let baseClasses = 'p-3 rounded-xl shadow max-w-[85%] transition duration-300';
-
-            if (role === 'user') {
-                messageBox.className = `${baseClasses} bg-blue-600 text-white rounded-tr-none`;
-                messageBox.innerHTML = `<p class="font-semibold mb-1">您</p><p>${text}</p>`;
-            } else if (role === 'gemini') {
-                messageBox.className = `${baseClasses} bg-blue-100 text-gray-800 rounded-tl-none`;
-                
-                // 處理 markdown 格式
-                const formattedText = text
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-                    .replace(/^- (.*)/gm, '<li>$1</li>'); // Simple list items
-
-                let contentHTML = `<p class="font-semibold mb-1">AI 助理</p>${formattedText.includes('<li>') ? '<ul>' + formattedText + '</ul>' : `<p>${formattedText}</p>`}`;
-
-                if (sources.length > 0) {
-                    const uniqueSources = Array.from(new Set(sources.map(s => s.uri)))
-                        .map(uri => sources.find(s => s.uri === uri));
-
-                    const sourcesHtml = uniqueSources.map((source, index) =>
-                        `<a href="${source.uri}" target="_blank" class="text-xs text-blue-500 hover:text-blue-700 block truncate" title="${source.title}">${source.title}</a>`
-                    ).join('');
-
-                    contentHTML += `<div class="mt-2 pt-2 border-t border-blue-200"><p class="text-xs font-semibold mb-1">引用來源:</p>${sourcesHtml}</div>`;
-                }
-
-                messageBox.innerHTML = contentHTML;
-            } else if (role === 'loading') {
-                messageBox.className = `${baseClasses} bg-gray-200 rounded-tl-none`;
-                messageBox.id = 'loadingMessage';
-                messageBox.innerHTML = `
-                    <p class="font-semibold mb-1">AI 助理 正在思考...</p>
-                    <div class="flex items-center space-x-2">
-                        <div class="dot-pulse"></div>
-                    </div>
-                `;
-            } else if (role === 'error') {
-                messageBox.className = `${baseClasses} bg-red-100 text-red-700 rounded-tl-none`;
-                messageBox.innerHTML = `<p class="font-semibold mb-1">錯誤</p><p>${text}</p>`;
-            }
-
-            messageContainer.appendChild(messageBox);
-            chatHistory.appendChild(messageContainer);
-            chatHistory.scrollTop = chatHistory.scrollHeight; // 自動捲動到底部
-            return messageBox;
-        }
-
-        /**
-         * 處理 API 呼叫的指數退避重試邏輯
-         * @param {() => Promise<Response>} fetcher - 執行 fetch 呼叫的函數
-         * @param {number} maxRetries - 最大重試次數
-         * @param {number} delay - 初始延遲時間 (毫秒)
-         * @returns {Promise<Response>}
-         */
-        async function fetchWithRetry(fetcher, maxRetries = 3, delay = 1000) {
-            for (let i = 0; i < maxRetries; i++) {
-                try {
-                    const response = await fetcher();
-                    if (response.ok) {
-                        return response;
-                    }
-                    // For rate limiting (429) or other server errors (5xx), we retry
-                    if (response.status === 429 || response.status >= 500) {
-                        if (i === maxRetries - 1) throw new Error(`API 錯誤: ${response.status} ${response.statusText}`);
-                        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
-                        continue;
-                    }
-                    // For client errors (4xx), throw immediately
-                    throw new Error(`API 錯誤: ${response.status} ${response.statusText}`);
-
-                } catch (error) {
-                    if (i === maxRetries - 1) throw error;
-                    await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
-                }
-            }
-        }
-
-        /**
-         * 呼叫 Gemini API 並顯示結果
-         */
-        async function askGemini() {
-            const userQuery = questionInput.value.trim();
-            if (!userQuery) return;
-
-            // 1. 顯示使用者訊息
-            createMessageElement(userQuery, 'user');
-
-            // 2. 清空輸入並禁用按鈕
-            questionInput.value = '';
-            askButton.disabled = true;
-            buttonText.textContent = '提問中...';
-            loadingIndicator.classList.remove('hidden');
-
-            // 3. 顯示 loading 訊息
-            const loadingMessage = createMessageElement('', 'loading');
-
-            const systemPrompt = "你是一個樂於助人且知識淵博的 AI 助理。請使用清晰、簡潔的繁體中文回答所有問題。";
-            
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                // 啟用 Google 搜尋工具來獲取最新資訊（Grounding）
-                tools: [{ "google_search": {} }], 
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
+    try {
+        const fetcher = () =>
+            fetch(apiUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
                 },
-            };
+                body: JSON.stringify({
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [{ text: userQuery }]
+                        }
+                    ]
+                })
+            });
 
-            try {
-                const response = await fetchWithRetry(() => 
-                    fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    })
-                );
+        const response = await fetchWithRetry(fetcher);
+        const data = await response.json();
 
-                const result = await response.json();
-                const candidate = result.candidates?.[0];
+        // 拿出 Gemini 回答文字
+        const reply =
+            data.candidates?.[0]?.content?.parts?.[0]?.text ||
+            "抱歉，我無法取得 Gemini 回覆。";
 
-                let geminiText = "未能產生有效的回答。";
-                let sources = [];
+        loadingBox.remove();
 
-                if (candidate && candidate.content?.parts?.[0]?.text) {
-                    geminiText = candidate.content.parts[0].text;
+        createMessageElement(reply, "gemini");
 
-                    // 提取引用來源
-                    const groundingMetadata = candidate.groundingMetadata;
-                    if (groundingMetadata && groundingMetadata.groundingAttributions) {
-                        sources = groundingMetadata.groundingAttributions
-                            .map(attribution => ({
-                                uri: attribution.web?.uri,
-                                title: attribution.web?.title,
-                            }))
-                            .filter(source => source.uri && source.title);
-                    }
-                } else if (result.error && result.error.message) {
-                    geminiText = `API 錯誤：${result.error.message}`;
-                    throw new Error(geminiText);
-                } else {
-                    geminiText = "未能解析 API 回應。";
-                    throw new Error(geminiText);
-                }
-                
-                // 4. 移除 loading 訊息並顯示 Gemini 回應
-                loadingMessage.remove();
-                createMessageElement(geminiText, 'gemini', sources);
+    } catch (error) {
+        loadingBox.remove();
+        createMessageElement("⚠ 無法取得回覆：" + error.message, "error");
+    }
 
-            } catch (error) {
-                console.error("Gemini API 呼叫失敗:", error);
-                
-                // 4. 移除 loading 訊息並顯示錯誤
-                loadingMessage.remove();
-                createMessageElement(`很抱歉，在處理您的請求時發生錯誤: ${error.message}`, 'error');
-            } finally {
-                // 5. 重新啟用按鈕
-                askButton.disabled = false;
-                buttonText.textContent = '提問';
-                loadingIndicator.classList.add('hidden');
-            }
-        }
-    </script>
-
-</body>
-</html>
+    askButton.disabled = false;
+    buttonText.textContent = '提問';
+    loadingIndicator.classList.add('hidden');
+}
