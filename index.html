@@ -1,52 +1,43 @@
-async function askGemini() {
-    const userQuery = questionInput.value.trim();
-    if (!userQuery) return;
+async function askGPT() {
+  const userQuery = questionInput.value.trim();
+  if (!userQuery) return;
 
-    // 顯示使用者訊息
-    createMessageElement(userQuery, 'user');
+  // 顯示使用者訊息
+  createMessageElement(userQuery, 'user');
 
-    questionInput.value = '';
-    askButton.disabled = true;
-    buttonText.textContent = '提問中...';
-    loadingIndicator.classList.remove('hidden');
+  questionInput.value = '';
+  askButton.disabled = true;
+  buttonText.textContent = '提問中...';
+  loadingIndicator.classList.remove('hidden');
 
-    const loadingBox = createMessageElement('', 'loading');
+  // 顯示 loading
+  const loadingBox = createMessageElement('', 'loading');
 
-    try {
-        const fetcher = () =>
-            fetch(apiUrl, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    contents: [
-                        {
-                            role: "user",
-                            parts: [{ text: userQuery }]
-                        }
-                    ]
-                })
-            });
+  try {
+    // Step 1：呼叫 Apps Script Web App
+    const proxyUrl = "https://script.google.com/macros/s/AKfycbw1lXBmqyyh-_gqcTWarZQ58GD9fOk6MC9tidmJkQdgJnwpIV67XiQ7T0edPqX4uEscjQ/exec";
 
-        const response = await fetchWithRetry(fetcher);
-        const data = await response.json();
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: userQuery })
+    });
 
-        // 拿出 Gemini 回答文字
-        const reply =
-            data.candidates?.[0]?.content?.parts?.[0]?.text ||
-            "抱歉，我無法取得 Gemini 回覆。";
+    const data = await response.json();
+    loadingBox.remove();
 
-        loadingBox.remove();
-
-        createMessageElement(reply, "gemini");
-
-    } catch (error) {
-        loadingBox.remove();
-        createMessageElement("⚠ 無法取得回覆：" + error.message, "error");
+    if (data.answer) {
+      createMessageElement(data.answer, 'gemini'); // 使用原本 UI 顯示
+    } else {
+      createMessageElement("無法取得回覆", 'error');
     }
 
+  } catch (err) {
+    loadingBox.remove();
+    createMessageElement("⚠ 發生錯誤：" + err.message, 'error');
+  } finally {
     askButton.disabled = false;
     buttonText.textContent = '提問';
     loadingIndicator.classList.add('hidden');
+  }
 }
