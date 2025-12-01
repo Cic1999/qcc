@@ -1,43 +1,133 @@
-async function askGPT() {
-  const userQuery = questionInput.value.trim();
-  if (!userQuery) return;
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPT 互動問答</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f7f7f7; }
+        .dot-pulse {
+            position: relative; left: -9999px; width: 8px; height: 8px; border-radius: 50%;
+            background-color: #3b82f6; color: #3b82f6; box-shadow: 9999px 0 0 -5px;
+            animation: dot-pulse 1.5s infinite linear; animation-delay: 0.25s;
+        }
+        .dot-pulse::before, .dot-pulse::after {
+            content: ''; display: inline-block; position: absolute; top: 0; width: 8px; height: 8px; border-radius: 50%;
+            background-color: #3b82f6; color: #3b82f6;
+        }
+        .dot-pulse::before { box-shadow: 9984px 0 0 -5px; animation: dot-pulse-before 1.5s infinite linear; animation-delay: 0s; }
+        .dot-pulse::after { box-shadow: 10014px 0 0 -5px; animation: dot-pulse-after 1.5s infinite linear; animation-delay: 0.5s; }
 
-  // 顯示使用者訊息
-  createMessageElement(userQuery, 'user');
+        @keyframes dot-pulse { 0% { box-shadow: 9999px 0 0 -5px; } 30% { box-shadow: 9999px 0 0 2px; } 60%, 100% { box-shadow: 9999px 0 0 -5px; } }
+        @keyframes dot-pulse-before { 0% { box-shadow: 9984px 0 0 -5px; } 30% { box-shadow: 9984px 0 0 2px; } 60%, 100% { box-shadow: 9984px 0 0 -5px; } }
+        @keyframes dot-pulse-after { 0% { box-shadow: 10014px 0 0 -5px; } 30% { box-shadow: 10014px 0 0 2px; } 60%, 100% { box-shadow: 10014px 0 0 -5px; } }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
 
-  questionInput.value = '';
-  askButton.disabled = true;
-  buttonText.textContent = '提問中...';
-  loadingIndicator.classList.remove('hidden');
+<div class="w-full max-w-2xl bg-white shadow-xl rounded-xl p-6 flex flex-col h-[80vh]">
+    <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">
+        <span class="text-blue-600">GPT</span> 互動問答
+    </h1>
 
-  // 顯示 loading
-  const loadingBox = createMessageElement('', 'loading');
+    <!-- 聊天記錄 -->
+    <div id="chatHistory" class="flex-grow overflow-y-auto space-y-4 pr-2 mb-6">
+        <div class="flex justify-start">
+            <div class="bg-blue-100 text-blue-800 p-3 rounded-xl rounded-tl-none shadow max-w-[85%]">
+                <p class="font-semibold mb-1">AI 助理</p>
+                <p>您好！請輸入您的問題，我會盡力回答。</p>
+            </div>
+        </div>
+    </div>
 
-  try {
-    // Step 1：呼叫 Apps Script Web App
-    const proxyUrl = "https://script.google.com/macros/s/AKfycbw1lXBmqyyh-_gqcTWarZQ58GD9fOk6MC9tidmJkQdgJnwpIV67XiQ7T0edPqX4uEscjQ/exec";
+    <!-- 輸入區 -->
+    <div class="flex flex-col space-y-3">
+        <textarea id="questionInput" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150 resize-none h-20"
+                  placeholder="在這裡輸入您的問題..."
+                  onkeypress="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); askGPT(); }"></textarea>
+        <button id="askButton" onclick="askGPT()" class="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 transition duration-200 shadow-md flex items-center justify-center disabled:bg-blue-400">
+            <span id="buttonText">提問</span>
+            <div id="loadingIndicator" class="hidden">
+                <div class="dot-pulse"></div>
+            </div>
+        </button>
+    </div>
+</div>
 
-    const response = await fetch(proxyUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: userQuery })
-    });
+<script>
+const chatHistory = document.getElementById('chatHistory');
+const questionInput = document.getElementById('questionInput');
+const askButton = document.getElementById('askButton');
+const buttonText = document.getElementById('buttonText');
+const loadingIndicator = document.getElementById('loadingIndicator');
 
-    const data = await response.json();
-    loadingBox.remove();
-
-    if (data.answer) {
-      createMessageElement(data.answer, 'gemini'); // 使用原本 UI 顯示
-    } else {
-      createMessageElement("無法取得回覆", 'error');
+function createMessageElement(text, role) {
+    const messageContainer = document.createElement('div');
+    messageContainer.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+    const messageBox = document.createElement('div');
+    messageBox.className = 'p-3 rounded-xl shadow max-w-[85%] transition duration-300';
+    if(role==='user'){
+        messageBox.className += ' bg-blue-600 text-white rounded-tr-none';
+        messageBox.innerHTML = `<p class="font-semibold mb-1">您</p><p>${text}</p>`;
+    }else if(role==='gemini'){
+        messageBox.className += ' bg-blue-100 text-gray-800 rounded-tl-none';
+        messageBox.innerHTML = `<p class="font-semibold mb-1">AI 助理</p><p>${text}</p>`;
+    }else if(role==='loading'){
+        messageBox.className += ' bg-gray-200 rounded-tl-none';
+        messageBox.id='loadingMessage';
+        messageBox.innerHTML = `<p class="font-semibold mb-1">AI 助理 正在思考...</p><div class="flex items-center space-x-2"><div class="dot-pulse"></div></div>`;
+    }else if(role==='error'){
+        messageBox.className += ' bg-red-100 text-red-700 rounded-tl-none';
+        messageBox.innerHTML = `<p class="font-semibold mb-1">錯誤</p><p>${text}</p>`;
     }
-
-  } catch (err) {
-    loadingBox.remove();
-    createMessageElement("⚠ 發生錯誤：" + err.message, 'error');
-  } finally {
-    askButton.disabled = false;
-    buttonText.textContent = '提問';
-    loadingIndicator.classList.add('hidden');
-  }
+    messageContainer.appendChild(messageBox);
+    chatHistory.appendChild(messageContainer);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+    return messageBox;
 }
+
+async function askGPT() {
+    const userQuery = questionInput.value.trim();
+    if (!userQuery) return;
+
+    createMessageElement(userQuery, 'user');
+    questionInput.value = '';
+    askButton.disabled = true;
+    buttonText.textContent = '提問中...';
+    loadingIndicator.classList.remove('hidden');
+
+    const loadingBox = createMessageElement('', 'loading');
+
+    try {
+        const proxyUrl = "https://script.google.com/macros/s/AKfycbw1lXBmqyyh-_gqcTWarZQ58GD9fOk6MC9tidmJkQdgJnwpIV67XiQ7T0edPqX4uEscjQ/exec";
+
+        const response = await fetch(proxyUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: userQuery })
+        });
+
+        const data = await response.json();
+        loadingBox.remove();
+
+        if(data.answer){
+            createMessageElement(data.answer,'gemini');
+        }else{
+            createMessageElement("無法取得回覆",'error');
+        }
+
+    } catch(err){
+        loadingBox.remove();
+        createMessageElement("⚠ 發生錯誤：" + err.message,'error');
+    } finally{
+        askButton.disabled = false;
+        buttonText.textContent = '提問';
+        loadingIndicator.classList.add('hidden');
+    }
+}
+</script>
+
+</body>
+</html>
